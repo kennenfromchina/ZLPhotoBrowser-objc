@@ -1127,6 +1127,8 @@ double const ScalePhotoWidth = 1000;
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker
 {
+    if (self.cancleBlock) self.cancleBlock();
+    [self hide];
     [picker dismissViewControllerAnimated:YES completion:nil];
 }
 
