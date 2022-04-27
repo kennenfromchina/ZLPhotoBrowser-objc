@@ -1100,7 +1100,8 @@ double const ScalePhotoWidth = 1000;
     BOOL (^shouldSelect)(void) = ^BOOL() {
         @zl_strongify(self);
         if (model.type == ZLAssetMediaTypeVideo) {
-            return (model.asset.duration <= self.configuration.maxVideoDuration);
+            /// MARK: 由于不精确导致的问题:用户录制长按直到最后一刻被停止, 时长超过一点点, 所以对此处判断做修改
+            return (model.asset.duration - self.configuration.maxVideoDuration <= 1);
         }
         return YES;
     };
