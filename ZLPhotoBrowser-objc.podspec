@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name         = 'ZLPhotoBrowser'
-  s.version      = '1.0.6'
+  s.version      = '1.0.7'
   s.summary      = 'ZLPhotoBrowser 的oc版本'
   s.homepage     = 'https://github.com/longitachi/ZLPhotoBrowser-objc'
   s.license      = 'MIT'
