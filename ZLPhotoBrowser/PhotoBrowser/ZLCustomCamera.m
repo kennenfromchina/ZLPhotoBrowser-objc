@@ -985,7 +985,11 @@
         [self.session stopRunning];
     }
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self dismissViewControllerAnimated:YES completion:nil];
+        [self dismissViewControllerAnimated:YES completion:^{
+            if (self.cancelBlock) {
+                self.cancelBlock();
+            }
+        }];
     });
 }
 

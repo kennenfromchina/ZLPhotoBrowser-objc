@@ -32,5 +32,9 @@
  确定回调，如果拍照则videoUrl为nil，如果视频则image为nil
  */
 @property (nonatomic, copy) void (^doneBlock)(UIImage *image, NSURL *videoUrl);
+/**
+ 取消回调
+ */
+@property (nonatomic, copy) void (^cancelBlock)(void);
 
 @end
