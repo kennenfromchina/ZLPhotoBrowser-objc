@@ -18,6 +18,7 @@
 #import "ZLEditVideoController.h"
 #import "ZLCustomCamera.h"
 #import "ZLDefine.h"
+#import "ZLUIImagePickerController.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 
 #define kBaseViewHeight (self.configuration.maxPreviewCount ? 300 : 142)
@@ -534,7 +535,12 @@ double const ScalePhotoWidth = 1000;
         //系统相机拍照
         if ([UIImagePickerController isSourceTypeAvailable:
              UIImagePickerControllerSourceTypeCamera]){
-            UIImagePickerController *picker = [[UIImagePickerController alloc] init];
+            UIImagePickerController *picker;
+            if (self.configuration.useSystemCameraSubClass) {
+                picker = [[ZLUIImagePickerController alloc] init];
+            } else {
+                picker = [[UIImagePickerController alloc] init];
+            }
             picker.delegate = self;
             picker.allowsEditing = NO;
             picker.videoQuality = UIImagePickerControllerQualityTypeHigh;
