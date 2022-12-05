@@ -22,6 +22,7 @@
 #import "ZLCustomCamera.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 #import "ZLInteractiveAnimateProtocol.h"
+#import "ZLUIImagePickerController.h"
 
 typedef NS_ENUM(NSUInteger, SlideSelectType) {
     SlideSelectTypeNone,
@@ -993,7 +994,12 @@ typedef NS_ENUM(NSUInteger, SlideSelectType) {
         //系统相机拍照
         if ([UIImagePickerController isSourceTypeAvailable:
              UIImagePickerControllerSourceTypeCamera]){
-            UIImagePickerController *picker = [[UIImagePickerController alloc] init];
+            UIImagePickerController *picker;
+            if (configuration.useSystemCameraSubClass) {
+                picker = [[ZLUIImagePickerController alloc] init];
+            } else {
+                picker = [[UIImagePickerController alloc] init];
+            }
             picker.delegate = self;
             picker.allowsEditing = NO;
             picker.videoQuality = UIImagePickerControllerQualityTypeHigh;

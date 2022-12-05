@@ -281,6 +281,11 @@
 @property (nonatomic, assign) BOOL useSystemCamera;
 
 /**
+ * 使用系统相机子类, 防止事件穿透到Flutter
+ */
+@property (nonatomic, assign) BOOL useSystemCameraSubClass;
+
+/**
  是否允许录制视频，默认YES
  */
 @property (nonatomic, assign) BOOL allowRecordVideo;
