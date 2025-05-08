@@ -7,7 +7,7 @@ Pod::Spec.new do |s|
   s.platform     = :ios
   s.author       = {'longitachi' => 'longitachi@163.com'}
 
-  s.ios.deployment_target = '8.0'
+  s.ios.deployment_target = '12.0'
   s.source       = {:git => 'https://github.com/kennenfromchina/ZLPhotoBrowser-objc.git', :tag => s.version}
   s.source_files = 'ZLPhotoBrowser/PhotoBrowser/**/*.{h,m}'
   s.resources    = 'ZLPhotoBrowser/PhotoBrowser/resource/*.{png,xib,nib,bundle}'
