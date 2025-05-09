@@ -765,14 +765,31 @@
 
 @end
 
-
 //!!!!: ZLPreviewVideo
 @implementation ZLPreviewVideo
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    if (self = [super initWithFrame:frame]) {
+        // 注册自动播放通知
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(checkAutoPlayNotification:)
+                                                     name:kZLPreviewVideoAutoPlayNotification
+                                                   object:nil]; // MODIFIED: 更新选择器
+    }
+    return self;
+}
 
 - (void)dealloc
 {
     [self stopPlayVideo];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+// MODIFIED: 添加通知处理方法
+- (void)checkAutoPlayNotification:(NSNotification *)notification {
+    NSString *targetAssetId = notification.userInfo[kZLPreviewVideoAssetIdKey];
+    self.autoPlayAssetId = targetAssetId;
+    [self checkAutoPlay];
 }
 
 - (void)layoutSubviews
@@ -906,8 +923,27 @@
             self.playLayer.player = player;
             [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(playFinished:) name:AVPlayerItemDidPlayToEndTimeNotification object:player.currentItem];
             [self addSubview:self.playBtn];
+
+            // 检查是否需要自动播放
+            self.currentAssetId = [self getAssetIdentifier:asset];
+            [self checkAutoPlay];
         });
     }];
+}
+
+// MODIFIED: 检查是否需要自动播放
+- (void)checkAutoPlay
+{
+    if (self.autoPlayAssetId && self.currentAssetId && [self.currentAssetId isEqualToString:self.autoPlayAssetId]) {
+        [self playBtnClick];
+        self.autoPlayAssetId = nil;
+    }
+}
+
+// MODIFIED: 添加获取资源标识符的方法
+- (NSString *)getAssetIdentifier:(PHAsset *)asset {
+    // 修正：使用PHAsset的localIdentifier方法获取唯一标识符
+    return [asset localIdentifier];
 }
 
 - (void)initVideoLoadFailedFromiCloudUI
@@ -975,6 +1011,17 @@
     BOOL _isDragingProgress;
 }
 
+- (instancetype)initWithFrame:(CGRect)frame {
+    if (self = [super initWithFrame:frame]) {
+        // 注册自动播放通知
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(checkAutoPlayNotification:)
+                                                     name:kZLPreviewVideoAutoPlayNotification
+                                                   object:nil]; // MODIFIED: 更新选择器
+    }
+    return self;
+}
+
 - (void)dealloc
 {
     ZLLoggerDebug(@"---- ZLPreviewNetVideo dealloc");
@@ -985,6 +1032,13 @@
     
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self removeObeserverOnPlayerItem];
+}
+
+// MODIFIED: 添加通知处理方法
+- (void)checkAutoPlayNotification:(NSNotification *)notification {
+    NSString *targetAssetId = notification.userInfo[kZLPreviewVideoAssetIdKey];
+    self.autoPlayAssetId = targetAssetId;
+    [self checkAutoPlay];
 }
 
 - (void)layoutSubviews
@@ -1107,6 +1161,22 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(playFinished:) name:AVPlayerItemDidPlayToEndTimeNotification object:player.currentItem];
 //    [player.currentItem addObserver:self forKeyPath:@"playbackBufferEmpty" options:NSKeyValueObservingOptionNew context:nil];
 //    [player.currentItem addObserver:self forKeyPath:@"playbackLikelyToKeepUp" options:NSKeyValueObservingOptionNew context:nil];
+    // 检查是否需要自动播放
+    self.currentAssetId = [self getAssetIdentifier:url];
+    [self checkAutoPlay];
+}
+
+- (void)checkAutoPlay {
+    // 检查是否需要自动播放
+    if (self.autoPlayAssetId && self.currentAssetId && [self.currentAssetId isEqualToString:self.autoPlayAssetId]) {
+        [self playBtnClick];
+        self.autoPlayAssetId = nil;
+    }
+}
+
+// MODIFIED: 添加获取资源标识符的方法
+- (NSString *)getAssetIdentifier:(NSURL *)url {
+    return [url absoluteString];
 }
 
 - (void)clearPreviousItem

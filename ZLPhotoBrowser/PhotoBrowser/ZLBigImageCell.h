@@ -10,6 +10,10 @@
 #import <PhotosUI/PhotosUI.h>
 #import <SDWebImage/SDAnimatedImageView.h>
 
+// 定义自动播放通知名称和参数键
+#define kZLPreviewVideoAutoPlayNotification @"ZLPreviewVideoAutoPlayNotification"
+#define kZLPreviewVideoAssetIdKey @"assetId" // MODIFIED: 统一键名
+
 @class ZLPhotoModel, PHAsset, ZLPreviewView, ZLProgressView, ZLVideoPlayerControl;
 
 @interface ZLBigImageCell : UICollectionViewCell
@@ -85,6 +89,10 @@
 @property (nonatomic, assign) PHImageRequestID imageRequestID;
 @property (nonatomic, strong) UITapGestureRecognizer *singleTap;
 @property (nonatomic, copy)   void (^singleTapCallBack)(void);
+// 自动播放的assetId
+@property (nonatomic, copy)   NSString * _Nullable autoPlayAssetId;
+// 当前正在播放的assetId
+@property (nonatomic, copy)   NSString * _Nullable currentAssetId;
 
 - (void)placeSubviews;
 - (void)controllerScrollViewDidScroll;

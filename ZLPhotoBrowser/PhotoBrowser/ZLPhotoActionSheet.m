@@ -20,6 +20,7 @@
 #import "ZLDefine.h"
 #import "ZLUIImagePickerController.h"
 #import <MobileCoreServices/MobileCoreServices.h>
+#import "ZLBigImageCell.h"
 
 #define kBaseViewHeight (self.configuration.maxPreviewCount ? 300 : 142)
 
@@ -275,54 +276,76 @@ double const ScalePhotoWidth = 1000;
     };
 }
 
-- (void)previewPhotos:(NSArray<NSDictionary *> *)photos index:(NSInteger)index hideToolBar:(BOOL)hideToolBar complete:(void (^)(NSArray * _Nonnull))complete
-{
-    //转换为对应类型的model对象
-    NSMutableArray<ZLPhotoModel *> *models = [NSMutableArray arrayWithCapacity:photos.count];
-    for (NSDictionary *dic in photos) {
-        ZLPhotoModel *model = [[ZLPhotoModel alloc] init];
-        ZLPreviewPhotoType type = [dic[ZLPreviewPhotoTyp] integerValue];
-        id obj = dic[ZLPreviewPhotoObj];
-        switch (type) {
-            case ZLPreviewPhotoTypePHAsset:
-                model.asset = obj;
-                model.type = [ZLPhotoManager transformAssetType:obj];
-                break;
-            case ZLPreviewPhotoTypeUIImage:
-                model.image = obj;
-                model.type = ZLAssetMediaTypeNetImage;
-                break;
-            case ZLPreviewPhotoTypeURLImage:
-                model.url = obj;
-                model.type = ZLAssetMediaTypeNetImage;
-                break;
-            case ZLPreviewPhotoTypeURLVideo:
-                model.url = obj;
-                model.type = ZLAssetMediaTypeNetVideo;
-                break;
-        }
-        model.selected = YES;
-        [models addObject:model];
-    }
-    
-    [self.arrSelectedModels removeAllObjects];
-    ZLShowBigImgViewController *svc = [self pushBigImageToPreview:photos models:models index:index];
-    svc.hideToolBar = hideToolBar;
-    
-    @zl_weakify(self);
-    __weak typeof(svc.navigationController) weakNav = svc.navigationController;
-    [svc setPreviewNetImageBlock:^(NSArray *photos) {
-        @zl_strongify(self);
-        __strong typeof(weakNav) strongNav = weakNav;
-        if (complete) complete(photos);
-        [self hide];
-        [strongNav dismissViewControllerAnimated:YES completion:nil];
-    }];
-    svc.cancelPreviewBlock = ^{
-        @zl_strongify(self);
-        [self hide];
-    };
+- (void)previewPhotos:(NSArray<NSDictionary *> *)photos index:(NSInteger)index hideToolBar:(BOOL)hideToolBar complete:(void (^)(NSArray * _Nonnull))complete {
+    [self previewPhotos:photos index:index hideToolBar:hideToolBar autoPlayFirstVideo:NO complete:complete];
 }
+
+- (void)previewPhotos:(NSArray<NSDictionary *> *)photos index:(NSInteger)index hideToolBar:(BOOL)hideToolBar autoPlayFirstVideo:(BOOL)autoPlayFirstVideo complete:(void (^)(NSArray *photos))complete
+    {
+        //转换为对应类型的model对象
+        NSMutableArray<ZLPhotoModel *> *models = [NSMutableArray arrayWithCapacity:photos.count];
+        for (NSDictionary *dic in photos) {
+            ZLPhotoModel *model = [[ZLPhotoModel alloc] init];
+            ZLPreviewPhotoType type = [dic[ZLPreviewPhotoTyp] integerValue];
+            id obj = dic[ZLPreviewPhotoObj];
+            switch (type) {
+                case ZLPreviewPhotoTypePHAsset:
+                    model.asset = obj;
+                    model.type = [ZLPhotoManager transformAssetType:obj];
+                    break;
+                case ZLPreviewPhotoTypeUIImage:
+                    model.image = obj;
+                    model.type = ZLAssetMediaTypeNetImage;
+                    break;
+                case ZLPreviewPhotoTypeURLImage:
+                    model.url = obj;
+                    model.type = ZLAssetMediaTypeNetImage;
+                    break;
+                case ZLPreviewPhotoTypeURLVideo:
+                    model.url = obj;
+                    model.type = ZLAssetMediaTypeNetVideo;
+                    break;
+            }
+            model.selected = YES;
+            [models addObject:model];
+        }
+
+        [self.arrSelectedModels removeAllObjects];
+        ZLShowBigImgViewController *svc = [self pushBigImageToPreview:photos models:models index:index];
+        svc.hideToolBar = hideToolBar;
+
+        if (autoPlayFirstVideo) {
+            if (models.count > 0) {
+                NSString *assetId;
+                ZLPhotoModel *model = models[0];
+                if (model.type == ZLAssetMediaTypeVideo) {
+                    assetId = model.asset.localIdentifier;
+                } else
+                if (models[0].type == ZLAssetMediaTypeNetVideo) {
+                    assetId = model.url.absoluteString;
+                }
+                if (assetId) {
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                        [[NSNotificationCenter defaultCenter] postNotificationName:kZLPreviewVideoAutoPlayNotification object:nil userInfo:@{kZLPreviewVideoAssetIdKey:assetId}];
+                    });
+                }
+            }
+        }
+
+        @zl_weakify(self);
+        __weak typeof(svc.navigationController) weakNav = svc.navigationController;
+        [svc setPreviewNetImageBlock:^(NSArray *photos) {
+            @zl_strongify(self);
+            __strong typeof(weakNav) strongNav = weakNav;
+            if (complete) complete(photos);
+            [self hide];
+            [strongNav dismissViewControllerAnimated:YES completion:nil];
+        }];
+        svc.cancelPreviewBlock = ^{
+            @zl_strongify(self);
+            [self hide];
+        };
+    }
 
 - (void)editImageWithAsset:(PHAsset *)asset success:(void (^)(UIImage * _Nonnull, PHAsset * _Nonnull))success cancel:(void (^)(void))cancel
 {
