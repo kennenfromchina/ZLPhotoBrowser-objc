@@ -600,6 +600,11 @@
             self.orientation = AVCaptureVideoOrientationLandscapeRight;
         }
     }
+
+    // 设备运动时触发自动聚焦（可选）
+    [self focusWithMode:AVCaptureFocusModeContinuousAutoFocus
+           exposureMode:AVCaptureExposureModeContinuousAutoExposure
+                 atPoint:CGPointMake(0.5, 0.5)]; // 中心点自动聚焦
 }
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations
@@ -782,31 +787,32 @@
 }
 
 //设置聚焦点
-- (void)focusWithMode:(AVCaptureFocusMode)focusMode exposureMode:(AVCaptureExposureMode)exposureMode atPoint:(CGPoint)point
-{
-    AVCaptureDevice * captureDevice = [self.videoInput device];
-    NSError * error;
-    //注意改变设备属性前一定要首先调用lockForConfiguration:调用完之后使用unlockForConfiguration方法解锁
+- (void)focusWithMode:(AVCaptureFocusMode)focusMode exposureMode:(AVCaptureExposureMode)exposureMode atPoint:(CGPoint)point {
+    AVCaptureDevice *captureDevice = [self.videoInput device];
+    NSError *error;
     if (![captureDevice lockForConfiguration:&error]) {
         return;
     }
-    //聚焦模式
+
+    // 临时设置手动聚焦模式
     if ([captureDevice isFocusModeSupported:focusMode]) {
-        [captureDevice setFocusMode:AVCaptureFocusModeAutoFocus];
+        captureDevice.focusMode = focusMode; // 例如 AVCaptureFocusModeAutoFocus
     }
-    //聚焦点
     if ([captureDevice isFocusPointOfInterestSupported]) {
-        [captureDevice setFocusPointOfInterest:point];
+        captureDevice.focusPointOfInterest = point;
     }
-    //曝光模式
     if ([captureDevice isExposureModeSupported:exposureMode]) {
-        [captureDevice setExposureMode:AVCaptureExposureModeContinuousAutoExposure];
+        captureDevice.exposureMode = exposureMode; // 例如 AVCaptureExposureModeAutoExpose
     }
-    //曝光点
     if ([captureDevice isExposurePointOfInterestSupported]) {
-        [captureDevice setExposurePointOfInterest:point];
+        captureDevice.exposurePointOfInterest = point;
     }
     [captureDevice unlockForConfiguration];
+
+    // 延迟 0.5 秒恢复连续自动聚焦（避免影响自动聚焦流程）
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self configureDevice:captureDevice]; // 恢复连续自动聚焦和曝光
+    });
 }
 
 #pragma mark - 手势调整焦距
@@ -876,6 +882,8 @@
             if ([self.session canAddInput:newVideoInput]) {
                 [self.session addInput:newVideoInput];
                 self.videoInput = newVideoInput;
+                // 重新配置新设备的聚焦和曝光模式
+                [self configureDevice:self.videoInput.device];
             } else {
                 [self.session addInput:self.videoInput];
             }
@@ -886,12 +894,35 @@
     }
 }
 
-- (AVCaptureDevice *)frontCamera {
-    return [self cameraWithPosition:AVCaptureDevicePositionFront];
+- (AVCaptureDevice *)backCamera {
+    AVCaptureDevice *device = [self cameraWithPosition:AVCaptureDevicePositionBack];
+    [self configureDevice:device]; // 新增设备配置方法
+    return device;
 }
 
-- (AVCaptureDevice *)backCamera {
-    return [self cameraWithPosition:AVCaptureDevicePositionBack];
+- (AVCaptureDevice *)frontCamera {
+    AVCaptureDevice *device = [self cameraWithPosition:AVCaptureDevicePositionFront];
+    [self configureDevice:device]; // 新增设备配置方法
+    return device;
+}
+
+// 新增设备配置方法
+- (void)configureDevice:(AVCaptureDevice *)device {
+    if (!device) return;
+    NSError *error = nil;
+    if ([device lockForConfiguration:&error]) {
+        // 连续自动聚焦
+        if ([device isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus]) {
+            device.focusMode = AVCaptureFocusModeContinuousAutoFocus;
+        }
+        // 连续自动曝光
+        if ([device isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]) {
+            device.exposureMode = AVCaptureExposureModeContinuousAutoExposure;
+        }
+        [device unlockForConfiguration];
+    } else {
+        ZLLoggerDebug(@"配置摄像头失败: %@", error.localizedDescription);
+    }
 }
 
 - (AVCaptureDevice *)cameraWithPosition:(AVCaptureDevicePosition) position {
