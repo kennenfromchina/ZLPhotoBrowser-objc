@@ -36,5 +36,9 @@
  取消回调
  */
 @property (nonatomic, copy) void (^cancelBlock)(void);
+/**
+ 消失回调(应用进入后台触发)
+ */
+@property (nonatomic, copy) void (^dismissCallBack)(void);
 
 @end

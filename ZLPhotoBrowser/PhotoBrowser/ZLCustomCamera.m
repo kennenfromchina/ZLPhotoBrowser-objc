@@ -610,7 +610,13 @@
 - (void)willResignActive
 {
     if ([self.session isRunning]) {
-        [self dismissViewControllerAnimated:YES completion:nil];
+        [self dismissViewControllerAnimated:YES completion:^{
+            if (self.dismissBlock) {
+                self.dismissBlock();
+            } else if (self.cancelBlock) {
+                self.cancelBlock();
+            }
+        }];
     }
 }
 
