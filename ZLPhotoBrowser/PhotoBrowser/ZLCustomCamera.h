@@ -39,6 +39,6 @@
 /**
  消失回调(应用进入后台触发)
  */
-@property (nonatomic, copy) void (^dismissCallBack)(void);
+@property (nonatomic, copy) void (^dismissBlock)(void);
 
 @end
