@@ -42,8 +42,14 @@
  */
 - (void)onOkClick;
 
+/**
+ 消失
+ */
 - (void)onDismiss;
 
+/**
+ 切换广角
+ */
 - (void)onToggleWideAngleMode:(BOOL)isWideAngle;
 
 @end
@@ -88,6 +94,8 @@
 @property (nonatomic, strong) UIButton *wideAngleBtn;
 // 标记当前是否为广角模式
 @property (nonatomic, assign) BOOL isWideAngleMode;
+// 当前是否为后置摄像头模式
+@property (nonatomic, assign) BOOL isBackCamera;
 
 @end
 
@@ -117,6 +125,8 @@
 {
     self = [super init];
     if (self) {
+        // 设置后置摄像头模式为YES
+        self.isBackCamera = YES;
         [self setupUI];
     }
     return self;
@@ -444,7 +454,7 @@
     self.cancelBtn.frame = self.bottomView.frame;
     self.doneBtn.frame = self.bottomView.frame;
     
-    if (self.allowTakePhoto && !self.allowRecordVideo) {
+    if (self.isBackCamera && self.allowTakePhoto && !self.allowRecordVideo) {
         self.wideAngleBtn.hidden = NO;
     } else {
         self.wideAngleBtn.hidden = YES;
@@ -743,6 +753,11 @@
         pan.maximumNumberOfTouches = 1;
         [self.view addGestureRecognizer:pan];
     }
+    
+    // 添加以下代码到setupUI方法末尾
+    BOOL isBackCamera = (self.videoInput.device.position == AVCaptureDevicePositionBack);
+    self.toolView.isBackCamera = isBackCamera;
+    self.toolView.wideAngleBtn.hidden = !isBackCamera || !self.allowTakePhoto || self.allowRecordVideo;
 }
 
 - (void)setupCamera
@@ -802,6 +817,11 @@
 
     // 发现广角和普通摄像头
     [self discoverCameras];
+    
+    // 初始化时根据摄像头类型设置广角按钮状态
+    BOOL isBackCamera = (self.videoInput.device.position == AVCaptureDevicePositionBack);
+    self.isBackCamera = isBackCamera;
+    self.toolView.wideAngleBtn.hidden = !isBackCamera || !self.allowTakePhoto || self.allowRecordVideo;
 }
 
 - (void)discoverCameras {
@@ -963,7 +983,7 @@
 }
 
 #pragma mark - 切换前后相机
-//切换摄像头
+// 切换摄像头
 - (void)btnToggleCameraAction
 {
     NSUInteger cameraCount = [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo].count;
@@ -971,10 +991,14 @@
         NSError *error;
         AVCaptureDeviceInput *newVideoInput;
         AVCaptureDevicePosition position = self.videoInput.device.position;
+        BOOL isBackCamera = NO;
+        
         if (position == AVCaptureDevicePositionBack) {
             newVideoInput = [[AVCaptureDeviceInput alloc] initWithDevice:[self frontCamera] error:&error];
+            isBackCamera = NO;
         } else if (position == AVCaptureDevicePositionFront) {
             newVideoInput = [[AVCaptureDeviceInput alloc] initWithDevice:[self backCamera] error:&error];
+            isBackCamera = YES;
         } else {
             return;
         }
@@ -991,6 +1015,17 @@
                 [self.session addInput:self.videoInput];
             }
             [self.session commitConfiguration];
+            
+            // 根据摄像头位置更新广角按钮显示状态
+            self.toolView.isBackCamera = isBackCamera;
+            if (isBackCamera) {
+                // 后置摄像头，恢复广角按钮的显示逻辑
+                self.toolView.allowTakePhoto = self.allowTakePhoto;
+                self.toolView.wideAngleBtn.hidden = !self.allowTakePhoto || self.allowRecordVideo;
+            } else {
+                // 前置摄像头，隐藏广角按钮
+                self.toolView.wideAngleBtn.hidden = YES;
+            }
         } else if (error) {
             ZLLoggerDebug(@"切换前后摄像头失败");
         }
