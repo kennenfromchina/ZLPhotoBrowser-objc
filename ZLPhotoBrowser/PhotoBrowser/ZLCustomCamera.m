@@ -483,6 +483,7 @@
 @end
 
 
+static NSUInteger flashlightModeCache = 0;
 
 //--------------------------------------------------------//
 //--------------------------------------------------------//
@@ -509,6 +510,8 @@
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *previewLayer;
 //切换摄像头按钮
 @property (nonatomic, strong) UIButton *toggleCameraBtn;
+// 闪光灯按钮
+@property (nonatomic, strong) UIButton *flashlightBtn;
 //聚焦图
 @property (nonatomic, strong) UIImageView *focusCursorImageView;
 //录制视频保存的url
@@ -526,10 +529,15 @@
 
 // 标记当前是否为广角模式
 @property (nonatomic, assign) BOOL isWideAngleMode;
+// 是否为后置摄像头模式
+@property (nonatomic, assign) BOOL isBackCamera;
 // 广角摄像头设备
 @property (nonatomic, strong) AVCaptureDevice *wideAngleCamera;
 // 普通摄像头设备
 @property (nonatomic, strong) AVCaptureDevice *normalCamera;
+
+// 闪光灯状态 - 修改为正确的枚举类型
+@property (nonatomic, assign) AVCaptureFlashMode flashlightMode;
 
 @end
 
@@ -557,6 +565,9 @@
         self.sessionPreset = ZLCaptureSessionPreset1280x720;
         self.videoType = ZLExportVideoTypeMp4;
         self.circleProgressColor = kRGB(80, 169, 56);
+        
+        // 初始化闪光灯状态 - 修改为正确的枚举类型
+        self.flashlightMode = flashlightModeCache;
     }
     return self;
 }
@@ -717,6 +728,9 @@
     
     self.toolView.frame = CGRectMake(0, kViewHeight-150-ZL_SafeAreaBottom(), kViewWidth, 100);
     self.previewLayer.frame = self.view.layer.bounds;
+    
+    // 设置闪光灯按钮位置：左上角，与切换摄像头按钮对称
+    self.flashlightBtn.frame = CGRectMake(20, UIApplication.sharedApplication.statusBarFrame.size.height, 30, 30);
     self.toggleCameraBtn.frame = CGRectMake(kViewWidth-50, UIApplication.sharedApplication.statusBarFrame.size.height, 30, 30);
 }
 
@@ -739,6 +753,15 @@
     self.focusCursorImageView.alpha = 0;
     [self.view addSubview:self.focusCursorImageView];
     
+    // 添加闪光灯按钮
+    self.flashlightBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    [self.flashlightBtn setImage:GetImageWithName(@"zl_flashlight_off") forState:UIControlStateNormal];
+    [self.flashlightBtn setImage:GetImageWithName(@"zl_flashlight_on") forState:UIControlStateSelected];
+    [self.flashlightBtn addTarget:self action:@selector(toggleFlashlight:) forControlEvents:UIControlEventTouchUpInside];
+    self.flashlightBtn.frame = CGRectMake(0, 0, 30, 30);
+    self.flashlightBtn.selected = (self.flashlightMode == AVCaptureFlashModeOn);
+    [self.view addSubview:self.flashlightBtn];
+    
     self.toggleCameraBtn = [UIButton buttonWithType:UIButtonTypeCustom];
     [self.toggleCameraBtn setImage:GetImageWithName(@"zl_toggle_camera") forState:UIControlStateNormal];
     [self.toggleCameraBtn addTarget:self action:@selector(btnToggleCameraAction) forControlEvents:UIControlEventTouchUpInside];
@@ -755,9 +778,7 @@
     }
     
     // 添加以下代码到setupUI方法末尾
-    BOOL isBackCamera = (self.videoInput.device.position == AVCaptureDevicePositionBack);
-    self.toolView.isBackCamera = isBackCamera;
-    self.toolView.wideAngleBtn.hidden = !isBackCamera || !self.allowTakePhoto || self.allowRecordVideo;
+    self.toolView.wideAngleBtn.hidden = !self.allowTakePhoto || self.allowRecordVideo;
 }
 
 - (void)setupCamera
@@ -819,10 +840,54 @@
     [self discoverCameras];
     
     // 初始化时根据摄像头类型设置广角按钮状态
-    BOOL isBackCamera = (self.videoInput.device.position == AVCaptureDevicePositionBack);
-    self.isBackCamera = isBackCamera;
-    self.toolView.wideAngleBtn.hidden = !isBackCamera || !self.allowTakePhoto || self.allowRecordVideo;
+    self.toolView.wideAngleBtn.hidden = !self.allowTakePhoto || self.allowRecordVideo;
+    
+    // 配置闪光灯
+    [self configureFlashlight];
 }
+
+- (void)configureFlashlight {
+    AVCaptureDevice *device = self.videoInput.device;
+    NSError *error;
+    
+    if ([device lockForConfiguration:&error]) {
+        // 检查设备是否支持闪光灯
+        if ([device hasFlash]) {
+            // 更新按钮状态
+            self.flashlightBtn.selected = (self.flashlightMode == AVCaptureFlashModeOn);
+            // 设置闪光灯模式 - 修改为正确的枚举类型
+            if (self.allowRecordVideo) return;
+            device.flashMode = self.flashlightMode;
+            
+            // 视频模式下如果开启闪光灯则设置为torch模式
+            if (self.allowRecordVideo && self.flashlightMode == AVCaptureFlashModeOn) {
+                if ([device hasTorch]) {
+                    [device setTorchModeOnWithLevel:1.0 error:nil];
+                }
+            }
+            
+        } else {
+            // 设备不支持闪光灯，隐藏按钮
+            self.flashlightBtn.hidden = YES;
+        }
+        [device unlockForConfiguration];
+    } else {
+        ZLLoggerDebug(@"配置闪光灯失败: %@", error.localizedDescription);
+    }
+}
+
+- (void)toggleFlashlight:(UIButton *)sender {
+    // 切换闪光灯状态 - 修改为正确的枚举类型
+    self.flashlightMode = (self.flashlightMode == AVCaptureFlashModeOn) ? AVCaptureFlashModeOff : AVCaptureFlashModeOn;
+    flashlightModeCache = self.flashlightMode;
+    
+    // 更新按钮状态
+    sender.selected = (self.flashlightMode == AVCaptureFlashModeOn);
+    
+    // 配置闪光灯
+    [self configureFlashlight];
+}
+
 
 - (void)discoverCameras {
     AVCaptureDeviceDiscoverySession *discoverySession = [AVCaptureDeviceDiscoverySession
@@ -997,7 +1062,12 @@
             newVideoInput = [[AVCaptureDeviceInput alloc] initWithDevice:[self frontCamera] error:&error];
             isBackCamera = NO;
         } else if (position == AVCaptureDevicePositionFront) {
-            newVideoInput = [[AVCaptureDeviceInput alloc] initWithDevice:[self backCamera] error:&error];
+            // 判断广角状态
+            if (self.isWideAngleMode) {
+                newVideoInput = [[AVCaptureDeviceInput alloc] initWithDevice:[self wideAngleCamera] error:&error];
+            } else {
+                newVideoInput = [[AVCaptureDeviceInput alloc] initWithDevice:[self backCamera] error:&error];
+            }
             isBackCamera = YES;
         } else {
             return;
@@ -1011,6 +1081,8 @@
                 self.videoInput = newVideoInput;
                 // 重新配置新设备的聚焦和曝光模式
                 [self configureDevice:self.videoInput.device];
+                // 配置闪光灯
+                [self configureFlashlight];
             } else {
                 [self.session addInput:self.videoInput];
             }
@@ -1033,7 +1105,7 @@
 }
 
 - (AVCaptureDevice *)backCamera {
-    AVCaptureDevice *device = [self cameraWithPosition:AVCaptureDevicePositionBack];
+    AVCaptureDevice *device = (self.isWideAngleMode ? self.wideAngleCamera : self.normalCamera) ?: [self cameraWithPosition:AVCaptureDevicePositionBack];
     [self configureDevice:device]; // 新增设备配置方法
     return device;
 }
@@ -1116,6 +1188,16 @@
         NSURL *url = [NSURL fileURLWithPath:[ZLPhotoManager getVideoExportFilePath:self.videoType]];
         [self.movieFileOutPut startRecordingToOutputFileURL:url recordingDelegate:self];
     }
+    
+    // 录制视频时如果闪光灯开启则设置为torch模式
+    AVCaptureDevice *device = self.videoInput.device;
+    NSError *error;
+    if ([device lockForConfiguration:&error]) {
+        if ([device hasTorch] && self.flashlightMode == AVCaptureFlashModeOn) {
+            [device setTorchModeOnWithLevel:1.0 error:nil];
+        }
+        [device unlockForConfiguration];
+    }
 }
 
 //结束录制
@@ -1123,6 +1205,16 @@
 {
     [self.movieFileOutPut stopRecording];
     [self setVideoZoomFactor:1];
+    
+    // 结束录制时关闭torch
+    AVCaptureDevice *device = self.videoInput.device;
+    NSError *error;
+    if ([device lockForConfiguration:&error]) {
+        if ([device hasTorch]) {
+            [device setTorchMode:(AVCaptureTorchModeOff)];
+        }
+        [device unlockForConfiguration];
+    }
 }
 
 //重新拍照或录制
@@ -1230,6 +1322,7 @@
         [self.session addInput:self.videoInput];
         ZLLoggerDebug(@"无法添加新的摄像头输入");
     }
+    [self configureFlashlight];
     [self.session commitConfiguration];
     [self.session startRunning];
 }
