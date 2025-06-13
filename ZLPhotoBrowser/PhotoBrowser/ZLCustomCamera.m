@@ -44,6 +44,8 @@
 
 - (void)onDismiss;
 
+- (void)onToggleWideAngleMode:(BOOL)isWideAngle;
+
 @end
 
 @interface CameraToolView : UIView <CAAnimationDelegate, UIGestureRecognizerDelegate>
@@ -81,6 +83,11 @@
 @property (nonatomic, assign) CGFloat duration;
 
 @property (nonatomic, strong) NSTimer *timer;
+
+// 新增广角切换按钮
+@property (nonatomic, strong) UIButton *wideAngleBtn;
+// 标记当前是否为广角模式
+@property (nonatomic, assign) BOOL isWideAngleMode;
 
 @end
 
@@ -157,14 +164,36 @@
     
     self.doneBtn.frame = self.bottomView.frame;
     self.doneBtn.layer.cornerRadius = height*kBottomViewScale/2;
+
+    // 设置广角按钮位置：在拍照按钮上方
+    CGFloat bottomViewY = CGRectGetMidY(self.bounds) - height*kBottomViewScale/2;
+    self.wideAngleBtn.center = CGPointMake(CGRectGetMidX(self.bounds), bottomViewY - 50);
+}
+
+// 重写hitTest方法以扩展触摸区域
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    // 检查触摸点是否在广角按钮上
+    CGPoint convertedPoint = [self convertPoint:point toView:self.wideAngleBtn];
+    if ([self.wideAngleBtn pointInside:convertedPoint withEvent:event]) {
+        return self.wideAngleBtn;
+    }
+    
+    // 对于其他触摸点，使用默认行为
+    return [super hitTest:point withEvent:event];
 }
 
 - (void)setAllowTakePhoto:(BOOL)allowTakePhoto
 {
     _allowTakePhoto = allowTakePhoto;
     if (allowTakePhoto) {
+        // 拍照模式下显示广角按钮
+        self.wideAngleBtn.hidden = NO;
+
         UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapAction:)];
         [self.bottomView addGestureRecognizer:tap];
+    } else {
+        // 非拍照模式下隐藏广角按钮
+        self.wideAngleBtn.hidden = YES;
     }
 }
 
@@ -172,10 +201,22 @@
 {
     _allowRecordVideo = allowRecordVideo;
     if (allowRecordVideo) {
+        // 录制模式下隐藏广角按钮
+        self.wideAngleBtn.hidden = YES;
+
         UILongPressGestureRecognizer *longG = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(longPressAction:)];
         longG.minimumPressDuration = 0.3;
         longG.delegate = self;
         [self.bottomView addGestureRecognizer:longG];
+    }
+}
+
+- (void)toggleWideAngleMode {
+    self.isWideAngleMode = !self.isWideAngleMode;
+    // 设置按钮是否选中状态
+    self.wideAngleBtn.selected = self.isWideAngleMode;
+    if ([self.delegate respondsToSelector:@selector(onToggleWideAngleMode:)]) {
+        [self.delegate onToggleWideAngleMode:self.isWideAngleMode];
     }
 }
 
@@ -224,6 +265,22 @@
     self.doneBtn.layer.masksToBounds = YES;
     self.doneBtn.hidden = YES;
     [self addSubview:self.doneBtn];
+
+    // 添加广角切换按钮
+    self.wideAngleBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    [self.wideAngleBtn setTitle:@"0.5x" forState:UIControlStateNormal];
+    [self.wideAngleBtn setTitle:@"1.0x" forState:UIControlStateSelected];
+    [self.wideAngleBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    [self.wideAngleBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateSelected];
+    self.wideAngleBtn.titleLabel.font = [UIFont systemFontOfSize:14];
+    self.wideAngleBtn.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.5];
+    self.wideAngleBtn.layer.cornerRadius = 20;
+    self.wideAngleBtn.clipsToBounds = YES;
+    self.wideAngleBtn.frame = CGRectMake(0, 0, 60, 40);
+    self.wideAngleBtn.selected = NO;
+    self.wideAngleBtn.hidden = YES; // 默认为隐藏
+    [self.wideAngleBtn addTarget:self action:@selector(toggleWideAngleMode) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:self.wideAngleBtn];
 }
 
 - (void)setTipLabelAlpha:(CGFloat)alpha animate:(BOOL)animate
@@ -338,6 +395,7 @@
     self.bottomView.hidden = YES;
     self.topView.hidden = YES;
     self.dismissBtn.hidden = YES;
+    self.wideAngleBtn.hidden = YES;
     
     self.bottomView.layer.transform = CATransform3DIdentity;
     self.topView.layer.transform = CATransform3DIdentity;
@@ -385,6 +443,12 @@
     
     self.cancelBtn.frame = self.bottomView.frame;
     self.doneBtn.frame = self.bottomView.frame;
+    
+    if (self.allowTakePhoto && !self.allowRecordVideo) {
+        self.wideAngleBtn.hidden = NO;
+    } else {
+        self.wideAngleBtn.hidden = YES;
+    }
 }
 
 #pragma mark - btn actions
@@ -449,6 +513,13 @@
 @property (nonatomic, strong) CMMotionManager *motionManager;
 
 @property (nonatomic, assign) AVCaptureVideoOrientation orientation;
+
+// 标记当前是否为广角模式
+@property (nonatomic, assign) BOOL isWideAngleMode;
+// 广角摄像头设备
+@property (nonatomic, strong) AVCaptureDevice *wideAngleCamera;
+// 普通摄像头设备
+@property (nonatomic, strong) AVCaptureDevice *normalCamera;
 
 @end
 
@@ -517,6 +588,9 @@
         [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord error:nil];
         [[AVAudioSession sharedInstance] setActive:YES error:nil];
     }
+
+    // 初始化广角模式状态
+    self.isWideAngleMode = NO;
 }
 
 - (void)viewDidAppear:(BOOL)animated
@@ -725,6 +799,35 @@
     
     [self.previewLayer setVideoGravity:AVLayerVideoGravityResizeAspect];
     [self.view.layer insertSublayer:self.previewLayer atIndex:0];
+
+    // 发现广角和普通摄像头
+    [self discoverCameras];
+}
+
+- (void)discoverCameras {
+    AVCaptureDeviceDiscoverySession *discoverySession = [AVCaptureDeviceDiscoverySession
+                                                        discoverySessionWithDeviceTypes:@[
+                                                            AVCaptureDeviceTypeBuiltInUltraWideCamera,
+                                                            AVCaptureDeviceTypeBuiltInWideAngleCamera
+                                                        ]
+                                                        mediaType:AVMediaTypeVideo
+                                                        position:AVCaptureDevicePositionBack];
+
+    NSArray *devices = discoverySession.devices;
+
+    // 查找广角和普通摄像头
+    for (AVCaptureDevice *device in devices) {
+        if (device.deviceType == AVCaptureDeviceTypeBuiltInUltraWideCamera) {
+            self.wideAngleCamera = device;
+        } else if (device.deviceType == AVCaptureDeviceTypeBuiltInWideAngleCamera) {
+            self.normalCamera = device;
+        }
+    }
+
+    // 如果没有找到广角摄像头，使用普通后置摄像头
+    if (!self.wideAngleCamera && self.normalCamera) {
+        self.wideAngleCamera = self.normalCamera;
+    }
 }
 
 - (NSString *)transformSessionPreset
@@ -1053,6 +1156,47 @@
         }];
         [[NSFileManager defaultManager] removeItemAtURL:self.videoUrl error:nil];
     }
+}
+
+- (void)onToggleWideAngleMode:(BOOL)isWideAngle {
+    self.isWideAngleMode = isWideAngle;
+    [self switchToCameraMode:isWideAngle];
+}
+
+- (void)switchToCameraMode:(BOOL)isWideAngle {
+    if ([self.session isRunning]) {
+        [self.session stopRunning];
+    }
+
+    AVCaptureDevice *targetDevice = isWideAngle ? self.wideAngleCamera : self.normalCamera;
+    if (!targetDevice) {
+        ZLLoggerDebug(@"无法找到目标摄像头");
+        return;
+    }
+
+    NSError *error;
+    AVCaptureDeviceInput *newInput = [AVCaptureDeviceInput deviceInputWithDevice:targetDevice error:&error];
+    if (error) {
+        ZLLoggerDebug(@"创建摄像头输入失败: %@", error.localizedDescription);
+        return;
+    }
+
+    [self.session beginConfiguration];
+    // 移除现有输入
+    [self.session removeInput:self.videoInput];
+    // 添加新输入
+    if ([self.session canAddInput:newInput]) {
+        [self.session addInput:newInput];
+        self.videoInput = newInput;
+        // 配置新设备
+        [self configureDevice:targetDevice];
+    } else {
+        // 添加失败，恢复原有输入
+        [self.session addInput:self.videoInput];
+        ZLLoggerDebug(@"无法添加新的摄像头输入");
+    }
+    [self.session commitConfiguration];
+    [self.session startRunning];
 }
 
 #pragma mark - AVCaptureFileOutputRecordingDelegate
