@@ -96,6 +96,8 @@
 @property (nonatomic, assign) BOOL isWideAngleMode;
 // 当前是否为后置摄像头模式
 @property (nonatomic, assign) BOOL isBackCamera;
+// 设备是否含有广角摄像头
+@property (nonatomic, assign) BOOL hasWideAngleCamera;
 
 @end
 
@@ -190,6 +192,18 @@
     
     // 对于其他触摸点，使用默认行为
     return [super hitTest:point withEvent:event];
+}
+
+- (void)setHasWideAngleCamera:(BOOL)hasWideAngleCamera {
+    _hasWideAngleCamera = hasWideAngleCamera;
+    // 此处就不隐藏该按钮了,假如不含有广角摄像头, 则将该按钮标题始终设置为1.0x
+    if (hasWideAngleCamera) {
+        [self.wideAngleBtn setTitle:@"0.5x" forState:UIControlStateNormal];
+        [self.wideAngleBtn setTitle:@"1.0x" forState:UIControlStateSelected];
+    } else {
+        [self.wideAngleBtn setTitle:@"1.0x" forState:UIControlStateNormal];
+        [self.wideAngleBtn setTitle:@"1.0x" forState:UIControlStateSelected];
+    }
 }
 
 - (void)setAllowTakePhoto:(BOOL)allowTakePhoto
@@ -912,6 +926,9 @@ static NSUInteger flashlightModeCache = 0;
     // 如果没有找到广角摄像头，使用普通后置摄像头
     if (!self.wideAngleCamera && self.normalCamera) {
         self.wideAngleCamera = self.normalCamera;
+        self.toolView.hasWideAngleCamera = NO;
+    } else {
+        self.toolView.hasWideAngleCamera = YES;
     }
 }
 
