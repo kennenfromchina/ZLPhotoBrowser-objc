@@ -713,7 +713,7 @@ static NSUInteger flashlightModeCache = 0;
     // 设备运动时触发自动聚焦（可选）
     [self focusWithMode:AVCaptureFocusModeContinuousAutoFocus
            exposureMode:AVCaptureExposureModeContinuousAutoExposure
-                 atPoint:CGPointMake(0.5, 0.5)]; // 中心点自动聚焦
+                 atPoint:self.view.center]; // 中心点自动聚焦
 }
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations
@@ -988,7 +988,7 @@ static NSUInteger flashlightModeCache = 0;
     
     //将UI坐标转化为摄像头坐标
     CGPoint cameraPoint = [self.previewLayer captureDevicePointOfInterestForPoint:point];
-    [self focusWithMode:AVCaptureFocusModeAutoFocus exposureMode:AVCaptureExposureModeAutoExpose atPoint:cameraPoint];
+    [self focusWithMode:AVCaptureFocusModeContinuousAutoFocus exposureMode:AVCaptureExposureModeContinuousAutoExposure atPoint:cameraPoint];
 }
 
 //设置聚焦点
@@ -998,7 +998,7 @@ static NSUInteger flashlightModeCache = 0;
     if (![captureDevice lockForConfiguration:&error]) {
         return;
     }
-
+    
     // 临时设置手动聚焦模式
     if ([captureDevice isFocusModeSupported:focusMode]) {
         captureDevice.focusMode = focusMode; // 例如 AVCaptureFocusModeAutoFocus
