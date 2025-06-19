@@ -595,6 +595,8 @@ double const ScalePhotoWidth = 1000;
         @zl_weakify(self);
         camera.doneBlock = ^(UIImage *image, NSURL *videoUrl) {
             @zl_strongify(self);
+            /// 此处设置拍照时选择原图, 否则后续代码会将图片压缩, 不符合实际需要, 在用户点击想测试还原
+            self.isSelectOriginalPhoto = YES;
             [self saveImage:image videoUrl:videoUrl];
         };
         [self.sender showDetailViewController:camera sender:nil];
@@ -603,6 +605,8 @@ double const ScalePhotoWidth = 1000;
 
 - (IBAction)btnPhotoLibrary_Click:(id)sender
 {
+    /// 此处选择想测试时不选择原图, 根据用户实际需要来
+    self.isSelectOriginalPhoto = NO;
     [PHPhotoLibrary.sharedPhotoLibrary unregisterChangeObserver:self];
     if (![ZLPhotoManager havePhotoLibraryAuthority]) {
         [self showNoAuthorityVC];
