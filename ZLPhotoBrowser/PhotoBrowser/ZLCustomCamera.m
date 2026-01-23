@@ -553,6 +553,8 @@ static NSUInteger flashlightModeCache = 0;
 // 闪光灯状态 - 修改为正确的枚举类型
 @property (nonatomic, assign) AVCaptureFlashMode flashlightMode;
 
+@property (atomic, assign) BOOL isCapturing;
+
 @end
 
 @implementation ZLCustomCamera
@@ -1163,36 +1165,67 @@ static NSUInteger flashlightModeCache = 0;
 }
 
 #pragma mark - CircleViewDelegate
-//拍照
+// 拍照
 - (void)onTakePicture
 {
-    AVCaptureConnection * videoConnection = [self.imageOutPut connectionWithMediaType:AVMediaTypeVideo];
-    videoConnection.videoOrientation = self.orientation;
-    if (!videoConnection) {
-        ZLLoggerDebug(@"take photo failed!");
-        return;
+  // 🚧 防止连续点击 / 重入
+  if (self.isCapturing) {
+    ZLLoggerDebug(@"take photo failed: 重复点击");
+    return;
+  }
+  
+  // 🚧 session 必须存在且运行中
+  if (!self.session || !self.session.isRunning) {
+    ZLLoggerDebug(@"take photo failed: session not running");
+    return;
+  }
+  
+  AVCaptureConnection *videoConnection =
+  [self.imageOutPut connectionWithMediaType:AVMediaTypeVideo];
+  
+  // 🚧 connection 必须合法
+  if (!videoConnection || !videoConnection.isEnabled) {
+    ZLLoggerDebug(@"take photo failed: invalid connection");
+    return;
+  }
+  
+  videoConnection.videoOrientation = self.orientation;
+  
+  self.isCapturing = YES;
+  
+  if (!_takedImageView) {
+    _takedImageView = [[UIImageView alloc] initWithFrame:self.view.bounds];
+    _takedImageView.backgroundColor = [UIColor blackColor];
+    _takedImageView.hidden = YES;
+    _takedImageView.contentMode = UIViewContentModeScaleAspectFit;
+    [self.view insertSubview:_takedImageView belowSubview:self.toolView];
+  }
+  
+  __weak typeof(self) weakSelf = self;
+  
+  [self.imageOutPut captureStillImageAsynchronouslyFromConnection:videoConnection
+                                                completionHandler:^(CMSampleBufferRef imageDataSampleBuffer, NSError *error) {
+    
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    strongSelf.isCapturing = NO;   // ✅ 必须第一时间释放锁
+    
+    if (!imageDataSampleBuffer || error) {
+      return;
     }
     
-    if (!_takedImageView) {
-        _takedImageView = [[UIImageView alloc] initWithFrame:self.view.bounds];
-        _takedImageView.backgroundColor = [UIColor blackColor];
-        _takedImageView.hidden = YES;
-        _takedImageView.contentMode = UIViewContentModeScaleAspectFit;
-        [self.view insertSubview:_takedImageView belowSubview:self.toolView];
-    }
+    NSData *imageData =
+    [AVCaptureStillImageOutput jpegStillImageNSDataRepresentation:imageDataSampleBuffer];
+    UIImage *image = [UIImage imageWithData:imageData];
     
-    __weak typeof(self) weakSelf = self;
-    [self.imageOutPut captureStillImageAsynchronouslyFromConnection:videoConnection completionHandler:^(CMSampleBufferRef imageDataSampleBuffer, NSError *error) {
-        if (imageDataSampleBuffer == NULL) {
-            return;
-        }
-        NSData * imageData = [AVCaptureStillImageOutput jpegStillImageNSDataRepresentation:imageDataSampleBuffer];
-        UIImage * image = [UIImage imageWithData:imageData];
-        weakSelf.takedImage = image.fixOrientation;
-        weakSelf.takedImageView.hidden = NO;
-        weakSelf.takedImageView.image = image;
-        [weakSelf.session stopRunning];
-    }];
+    strongSelf.takedImage = image.fixOrientation;
+    strongSelf.takedImageView.hidden = NO;
+    strongSelf.takedImageView.image = image;
+    
+    // 🚧 避免 stopRunning 与下一次 capture 冲突
+    if (strongSelf.session.isRunning) {
+      [strongSelf.session stopRunning];
+    }
+  }];
 }
 
 //开始录制
