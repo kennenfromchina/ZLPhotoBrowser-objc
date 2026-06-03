@@ -28,6 +28,12 @@
 //录制视频时候进度条颜色 默认 rgb(80, 169, 56)
 @property (nonatomic, strong) UIColor *circleProgressColor;
 
+//是否允许选择原图 默认NO
+@property (nonatomic, assign) BOOL allowSelectOriginal;
+
+//用户是否选择了原图（拍照预览页设置）
+@property (nonatomic, assign) BOOL isSelectedOriginal;
+
 /**
  确定回调，如果拍照则videoUrl为nil，如果视频则image为nil
  */

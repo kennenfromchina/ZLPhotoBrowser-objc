@@ -592,12 +592,19 @@ double const ScalePhotoWidth = 1000;
         camera.videoType = self.configuration.exportVideoType;
         camera.circleProgressColor = self.configuration.cameraProgressColor;
         camera.maxRecordDuration = self.configuration.maxRecordDuration;
+        camera.allowSelectOriginal = self.configuration.allowSelectOriginal;
         @zl_weakify(self);
         camera.doneBlock = ^(UIImage *image, NSURL *videoUrl) {
             @zl_strongify(self);
-            /// 此处设置拍照时选择原图, 否则后续代码会将图片压缩, 不符合实际需要, 在用户点击想测试还原
-            self.isSelectOriginalPhoto = YES;
-            [self saveImage:image videoUrl:videoUrl];
+            self.isSelectOriginalPhoto = camera.isSelectedOriginal;
+            if (image) {
+                if (self.selectImageBlock) {
+                    self.selectImageBlock(@[image], @[], self.isSelectOriginalPhoto);
+                }
+                [self hide];
+            } else {
+                [self saveImage:image videoUrl:videoUrl];
+            }
         };
         [self.sender showDetailViewController:camera sender:nil];
     }

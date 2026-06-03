@@ -92,12 +92,22 @@
 
 // 新增广角切换按钮
 @property (nonatomic, strong) UIButton *wideAngleBtn;
+// 原图选择按钮
+@property (nonatomic, strong) UIButton *originalBtn;
+// 原图大小标签
+@property (nonatomic, strong) UILabel *originalSizeLabel;
 // 标记当前是否为广角模式
 @property (nonatomic, assign) BOOL isWideAngleMode;
 // 当前是否为后置摄像头模式
 @property (nonatomic, assign) BOOL isBackCamera;
 // 设备是否含有广角摄像头
 @property (nonatomic, assign) BOOL hasWideAngleCamera;
+// 是否允许选择原图
+@property (nonatomic, assign) BOOL allowSelectOriginal;
+// 用户是否选择了原图
+@property (nonatomic, assign) BOOL isSelectedOriginal;
+// 拍照的图片（用于计算原图大小）
+@property (nonatomic, strong) UIImage *takedImage;
 
 @end
 
@@ -180,6 +190,13 @@
     // 设置广角按钮位置：在拍照按钮上方
     CGFloat bottomViewY = CGRectGetMidY(self.bounds) - height*kBottomViewScale/2;
     self.wideAngleBtn.center = CGPointMake(CGRectGetMidX(self.bounds), bottomViewY - 50);
+
+    // 原图按钮布局：水平居中，垂直与底部按钮同一水平线
+    CGFloat btnOriWidth = GetMatchValue(GetLocalLanguageTextValue(ZLPhotoBrowserOriginalText), 15, YES, 30);
+    CGFloat btnWidth = btnOriWidth + 25;
+    CGFloat centerY = CGRectGetMidY(self.bounds);
+    self.originalBtn.frame = CGRectMake((CGRectGetWidth(self.bounds) - btnWidth) / 2, centerY - 15, btnWidth, 30);
+    self.originalSizeLabel.frame = CGRectMake(CGRectGetMaxX(self.originalBtn.frame) + 5, centerY - 15, 80, 30);
 }
 
 // 重写hitTest方法以扩展触摸区域
@@ -244,6 +261,34 @@
     }
 }
 
+- (void)toggleOriginalPhoto {
+    self.isSelectedOriginal = !self.isSelectedOriginal;
+    self.originalBtn.selected = self.isSelectedOriginal;
+    if (self.isSelectedOriginal) {
+        self.originalSizeLabel.hidden = NO;
+        [self updateOriginalSize];
+    } else {
+        self.originalSizeLabel.hidden = YES;
+        self.originalSizeLabel.text = nil;
+    }
+}
+
+- (void)updateOriginalSize {
+    if (!self.takedImage) {
+        self.originalSizeLabel.text = nil;
+        return;
+    }
+    NSData *data = UIImageJPEGRepresentation(self.takedImage, 1.0);
+    if (data) {
+        CGFloat sizeMB = data.length / (1024.0 * 1024.0);
+        if (sizeMB >= 1.0) {
+            self.originalSizeLabel.text = [NSString stringWithFormat:@"(%.1fM)", sizeMB];
+        } else {
+            self.originalSizeLabel.text = [NSString stringWithFormat:@"(%.1fK)", data.length / 1024.0];
+        }
+    }
+}
+
 - (void)setupUI
 {
     self.clipsToBounds = NO;
@@ -305,6 +350,28 @@
     self.wideAngleBtn.hidden = YES; // 默认为隐藏
     [self.wideAngleBtn addTarget:self action:@selector(toggleWideAngleMode) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:self.wideAngleBtn];
+
+    // 添加原图选择按钮（参照 ZLShowBigImgViewController 样式）
+    CGFloat btnOriWidth = GetMatchValue(GetLocalLanguageTextValue(ZLPhotoBrowserOriginalText), 15, YES, 30);
+    self.originalBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    [self.originalBtn setTitle:GetLocalLanguageTextValue(ZLPhotoBrowserOriginalText) forState:UIControlStateNormal];
+    self.originalBtn.titleLabel.font = [UIFont systemFontOfSize:15];
+    [self.originalBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    UIImage *normalImg = GetImageWithName(@"zl_btn_original_circle");
+    UIImage *selImg = GetImageWithName(@"zl_btn_original_selected");
+    [self.originalBtn setImage:normalImg forState:UIControlStateNormal];
+    [self.originalBtn setImage:selImg forState:UIControlStateSelected];
+    [self.originalBtn setImageEdgeInsets:UIEdgeInsetsMake(0, -5, 0, 5)];
+    self.originalBtn.frame = CGRectMake(12, 0, btnOriWidth + 25, 30);
+    self.originalBtn.hidden = YES;
+    [self.originalBtn addTarget:self action:@selector(toggleOriginalPhoto) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:self.originalBtn];
+
+    self.originalSizeLabel = [[UILabel alloc] init];
+    self.originalSizeLabel.font = [UIFont systemFontOfSize:15];
+    self.originalSizeLabel.textColor = [UIColor whiteColor];
+    self.originalSizeLabel.hidden = YES;
+    [self addSubview:self.originalSizeLabel];
 }
 
 - (void)setTipLabelAlpha:(CGFloat)alpha animate:(BOOL)animate
@@ -440,7 +507,14 @@
 {
     self.cancelBtn.hidden = NO;
     self.doneBtn.hidden = NO;
-    
+    if (self.allowSelectOriginal) {
+        self.originalBtn.hidden = NO;
+        if (self.isSelectedOriginal) {
+            self.originalSizeLabel.hidden = NO;
+            [self updateOriginalSize];
+        }
+    }
+
     CGRect cancelRect = self.cancelBtn.frame;
     cancelRect.origin.x = 40;
     
@@ -464,7 +538,13 @@
     self.topView.hidden = NO;
     self.cancelBtn.hidden = YES;
     self.doneBtn.hidden = YES;
-    
+    self.originalBtn.hidden = YES;
+    self.originalSizeLabel.hidden = YES;
+    self.originalSizeLabel.text = nil;
+    self.takedImage = nil;
+    self.isSelectedOriginal = NO;
+    self.originalBtn.selected = NO;
+
     self.cancelBtn.frame = self.bottomView.frame;
     self.doneBtn.frame = self.bottomView.frame;
     
@@ -755,6 +835,7 @@ static NSUInteger flashlightModeCache = 0;
     self.toolView.allowRecordVideo = self.allowRecordVideo;
     self.toolView.circleProgressColor = self.circleProgressColor;
     self.toolView.maxRecordDuration = self.maxRecordDuration;
+    self.toolView.allowSelectOriginal = self.allowSelectOriginal;
     [self.view addSubview:self.toolView];
     
     self.focusCursorImageView = [[UIImageView alloc] initWithImage:GetImageWithName(@"zl_focus")];
@@ -1210,7 +1291,10 @@ static NSUInteger flashlightModeCache = 0;
     strongSelf.takedImage = image.fixOrientation;
     strongSelf.takedImageView.hidden = NO;
     strongSelf.takedImageView.image = image;
-    
+    strongSelf.toolView.takedImage = image;
+    strongSelf.flashlightBtn.hidden = YES;
+    strongSelf.toggleCameraBtn.hidden = YES;
+
     // 🚧 避免 stopRunning 与下一次 capture 冲突
     if (strongSelf.session.isRunning) {
       [strongSelf.session stopRunning];
@@ -1262,6 +1346,8 @@ static NSUInteger flashlightModeCache = 0;
 {
     [self.session startRunning];
     [self setFocusCursorWithPoint:self.view.center];
+    self.flashlightBtn.hidden = NO;
+    self.toggleCameraBtn.hidden = NO;
     if (self.takedImage != nil) {
         [UIView animateWithDuration:0.25 animations:^{
             self.takedImageView.alpha = 0;
@@ -1277,6 +1363,7 @@ static NSUInteger flashlightModeCache = 0;
 //确定选择
 - (void)onOkClick
 {
+    self.isSelectedOriginal = self.toolView.isSelectedOriginal;
     [self.playerView reset];
     [self dismissViewControllerAnimated:YES completion:^{
         if (self.doneBlock) {
