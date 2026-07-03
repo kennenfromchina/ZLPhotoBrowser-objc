@@ -664,6 +664,7 @@ static NSUInteger flashlightModeCache = 0;
         
         // 初始化闪光灯状态 - 修改为正确的枚举类型
         self.flashlightMode = flashlightModeCache;
+        ZLLoggerDebug(@"[相机] init | flashlightModeCache:%lu", (unsigned long)flashlightModeCache);
     }
     return self;
 }
@@ -723,8 +724,15 @@ static NSUInteger flashlightModeCache = 0;
         [alert addAction:action];
         [self showDetailViewController:alert sender:nil];
     } else {
-        [self.session startRunning];
-        [self setFocusCursorWithPoint:self.view.center];
+        ZLLoggerDebug(@"[相机] viewDidAppear | 启动session | flashlightMode:%ld | cache:%lu", (long)self.flashlightMode, (unsigned long)flashlightModeCache);
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            [self.session startRunning];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                // startRunning 会重置设备配置，需要重新应用手电筒状态
+                [self configureFlashlight];
+                [self setFocusCursorWithPoint:self.view.center];
+            });
+        });
         if (!self.allowTakePhoto && !self.allowRecordVideo) {
             ShowAlert(@"allowTakePhoto与allowRecordVideo不能同时为NO", self);
         }
@@ -745,7 +753,10 @@ static NSUInteger flashlightModeCache = 0;
 - (void)viewDidDisappear:(BOOL)animated
 {
     [super viewDidDisappear:animated];
-    
+
+    ZLLoggerDebug(@"[相机] viewDidDisappear | flashlightMode:%ld | sessionRunning:%d", (long)self.flashlightMode, self.session.isRunning);
+    // 页面消失时关闭手电筒，防止手机发热
+    [self turnOffTorch];
     if (self.session) {
         [self.session stopRunning];
     }
@@ -800,6 +811,7 @@ static NSUInteger flashlightModeCache = 0;
 
 - (void)willResignActive
 {
+    ZLLoggerDebug(@"[相机] willResignActive | flashlightMode:%ld", (long)self.flashlightMode);
     if ([self.session isRunning]) {
         [self dismissViewControllerAnimated:YES completion:^{
             if (self.dismissBlock) {
@@ -933,49 +945,64 @@ static NSUInteger flashlightModeCache = 0;
     
     // 初始化时根据摄像头类型设置广角按钮状态
     self.toolView.wideAngleBtn.hidden = !self.allowTakePhoto || self.allowRecordVideo;
-    
-    // 配置闪光灯
-    [self configureFlashlight];
 }
 
 - (void)configureFlashlight {
     AVCaptureDevice *device = self.videoInput.device;
     NSError *error;
-    
+
+    ZLLoggerDebug(@"[手电筒] configureFlashlight 开始 | 设备位置:%ld | hasTorch:%d | hasFlash:%d | flashlightMode:%ld | isCapturing:%d",
+                  (long)device.position, device.hasTorch, device.hasFlash, (long)self.flashlightMode, self.isCapturing);
+
     if ([device lockForConfiguration:&error]) {
-        // 检查设备是否支持闪光灯
-        if ([device hasFlash]) {
-            // 更新按钮状态
+        // 使用手电筒（torch）常亮替代闪光灯，更适合夜间拍照
+        if ([device hasTorch]) {
             self.flashlightBtn.selected = (self.flashlightMode == AVCaptureFlashModeOn);
-            // 设置闪光灯模式 - 修改为正确的枚举类型
-            if (self.allowRecordVideo) return;
-            device.flashMode = self.flashlightMode;
-            
-            // 视频模式下如果开启闪光灯则设置为torch模式
-            if (self.allowRecordVideo && self.flashlightMode == AVCaptureFlashModeOn) {
-                if ([device hasTorch]) {
-                    [device setTorchModeOnWithLevel:1.0 error:nil];
-                }
+            self.flashlightBtn.hidden = NO;
+
+            if (self.flashlightMode == AVCaptureFlashModeOn) {
+                BOOL ok = [device setTorchModeOnWithLevel:1.0 error:nil];
+                ZLLoggerDebug(@"[手电筒] 设置 torch ON | 结果:%d | torchMode:%ld | torchActive:%d", ok, (long)device.torchMode, device.torchActive);
+            } else {
+                device.torchMode = AVCaptureTorchModeOff;
+                ZLLoggerDebug(@"[手电筒] 设置 torch OFF | torchMode:%ld", (long)device.torchMode);
             }
-            
         } else {
-            // 设备不支持闪光灯，隐藏按钮
             self.flashlightBtn.hidden = YES;
+            ZLLoggerDebug(@"[手电筒] 设备无 torch，隐藏按钮");
         }
         [device unlockForConfiguration];
     } else {
-        ZLLoggerDebug(@"配置闪光灯失败: %@", error.localizedDescription);
+        ZLLoggerDebug(@"[手电筒] lockForConfiguration 失败: %@", error.localizedDescription);
+    }
+    ZLLoggerDebug(@"[手电筒] configureFlashlight 结束 | 按钮hidden:%d | 按钮selected:%d", self.flashlightBtn.hidden, self.flashlightBtn.selected);
+}
+
+/// 关闭手电筒，防止手机发热发烫
+- (void)turnOffTorch {
+    AVCaptureDevice *device = self.videoInput.device;
+    ZLLoggerDebug(@"[手电筒] turnOffTorch 调用 | device:%@ | hasTorch:%d | torchActive:%d", device, device.hasTorch, device.torchActive);
+    if (device && [device hasTorch]) {
+        NSError *error;
+        if ([device lockForConfiguration:&error]) {
+            device.torchMode = AVCaptureTorchModeOff;
+            ZLLoggerDebug(@"[手电筒] turnOffTorch 已关闭 | torchMode:%ld", (long)device.torchMode);
+            [device unlockForConfiguration];
+        } else {
+            ZLLoggerDebug(@"[手电筒] turnOffTorch lockForConfiguration 失败: %@", error.localizedDescription);
+        }
     }
 }
 
 - (void)toggleFlashlight:(UIButton *)sender {
-    // 切换闪光灯状态 - 修改为正确的枚举类型
+    // 切换手电筒状态
     self.flashlightMode = (self.flashlightMode == AVCaptureFlashModeOn) ? AVCaptureFlashModeOff : AVCaptureFlashModeOn;
     flashlightModeCache = self.flashlightMode;
-    
+    ZLLoggerDebug(@"[手电筒] 用户点击切换 | 新状态 flashlightMode:%ld | cache:%lu", (long)self.flashlightMode, (unsigned long)flashlightModeCache);
+
     // 更新按钮状态
     sender.selected = (self.flashlightMode == AVCaptureFlashModeOn);
-    
+
     // 配置闪光灯
     [self configureFlashlight];
 }
@@ -1147,6 +1174,9 @@ static NSUInteger flashlightModeCache = 0;
         AVCaptureDeviceInput *newVideoInput;
         AVCaptureDevicePosition position = self.videoInput.device.position;
         BOOL isBackCamera = NO;
+
+        ZLLoggerDebug(@"[相机] 切换前后摄像头 | 当前position:%ld → isWideAngle:%d | flashlightMode:%ld",
+                      (long)position, self.isWideAngleMode, (long)self.flashlightMode);
         
         if (position == AVCaptureDevicePositionBack) {
             newVideoInput = [[AVCaptureDeviceInput alloc] initWithDevice:[self frontCamera] error:&error];
@@ -1171,13 +1201,15 @@ static NSUInteger flashlightModeCache = 0;
                 self.videoInput = newVideoInput;
                 // 重新配置新设备的聚焦和曝光模式
                 [self configureDevice:self.videoInput.device];
-                // 配置闪光灯
-                [self configureFlashlight];
             } else {
                 [self.session addInput:self.videoInput];
             }
             [self.session commitConfiguration];
-            
+            // commitConfiguration 后应用手电筒状态（前置摄像头 hasTorch 为 NO 会自动隐藏按钮）
+            [self configureFlashlight];
+            ZLLoggerDebug(@"[相机] 切换前后摄像头完成 | 新position:%ld | isBackCamera:%d | newDeviceHasTorch:%d",
+                          (long)self.videoInput.device.position, isBackCamera, self.videoInput.device.hasTorch);
+
             // 根据摄像头位置更新广角按钮显示状态
             self.toolView.isBackCamera = isBackCamera;
             if (isBackCamera) {
@@ -1239,6 +1271,7 @@ static NSUInteger flashlightModeCache = 0;
 // 拍照
 - (void)onTakePicture
 {
+  ZLLoggerDebug(@"[拍照] onTakePicture 开始 | flashlightMode:%ld", (long)self.flashlightMode);
   // 🚧 防止连续点击 / 重入
   if (self.isCapturing) {
     ZLLoggerDebug(@"take photo failed: 重复点击");
@@ -1292,9 +1325,12 @@ static NSUInteger flashlightModeCache = 0;
     strongSelf.takedImageView.hidden = NO;
     strongSelf.takedImageView.image = image;
     strongSelf.toolView.takedImage = image;
+    ZLLoggerDebug(@"[拍照] 拍照完成回调 | image:%@ | flashlightMode:%ld", image, (long)strongSelf.flashlightMode);
     strongSelf.flashlightBtn.hidden = YES;
     strongSelf.toggleCameraBtn.hidden = YES;
 
+    // 拍照完成后关闭手电筒，防止持续发热
+    [strongSelf turnOffTorch];
     // 🚧 避免 stopRunning 与下一次 capture 冲突
     if (strongSelf.session.isRunning) {
       [strongSelf.session stopRunning];
@@ -1313,15 +1349,6 @@ static NSUInteger flashlightModeCache = 0;
         [self.movieFileOutPut startRecordingToOutputFileURL:url recordingDelegate:self];
     }
     
-    // 录制视频时如果闪光灯开启则设置为torch模式
-    AVCaptureDevice *device = self.videoInput.device;
-    NSError *error;
-    if ([device lockForConfiguration:&error]) {
-        if ([device hasTorch] && self.flashlightMode == AVCaptureFlashModeOn) {
-            [device setTorchModeOnWithLevel:1.0 error:nil];
-        }
-        [device unlockForConfiguration];
-    }
 }
 
 //结束录制
@@ -1329,25 +1356,23 @@ static NSUInteger flashlightModeCache = 0;
 {
     [self.movieFileOutPut stopRecording];
     [self setVideoZoomFactor:1];
-    
-    // 结束录制时关闭torch
-    AVCaptureDevice *device = self.videoInput.device;
-    NSError *error;
-    if ([device lockForConfiguration:&error]) {
-        if ([device hasTorch]) {
-            [device setTorchMode:(AVCaptureTorchModeOff)];
-        }
-        [device unlockForConfiguration];
-    }
+    // 结束录制时关闭手电筒
+    [self turnOffTorch];
 }
 
 //重新拍照或录制
 - (void)onRetake
 {
-    [self.session startRunning];
-    [self setFocusCursorWithPoint:self.view.center];
-    self.flashlightBtn.hidden = NO;
-    self.toggleCameraBtn.hidden = NO;
+    ZLLoggerDebug(@"[拍照] onRetake | flashlightMode:%ld | cache:%lu", (long)self.flashlightMode, (unsigned long)flashlightModeCache);
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [self.session startRunning];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // 重新开始后恢复手电筒状态（configureFlashlight 会根据设备 hasTorch 自动控制按钮显隐）
+            [self configureFlashlight];
+            [self setFocusCursorWithPoint:self.view.center];
+            self.toggleCameraBtn.hidden = NO;
+        });
+    });
     if (self.takedImage != nil) {
         [UIView animateWithDuration:0.25 animations:^{
             self.takedImageView.alpha = 0;
@@ -1375,6 +1400,9 @@ static NSUInteger flashlightModeCache = 0;
 //dismiss
 - (void)onDismiss
 {
+    ZLLoggerDebug(@"[相机] onDismiss | flashlightMode:%ld | sessionRunning:%d", (long)self.flashlightMode, self.session.isRunning);
+    // dismiss 前关闭手电筒，防止手机发热
+    [self turnOffTorch];
     if ([self.session isRunning]) {
         [self.session stopRunning];
     }
@@ -1418,6 +1446,7 @@ static NSUInteger flashlightModeCache = 0;
 }
 
 - (void)switchToCameraMode:(BOOL)isWideAngle {
+    ZLLoggerDebug(@"[相机] 切换广角模式 | isWideAngle:%d | flashlightMode:%ld", isWideAngle, (long)self.flashlightMode);
     if ([self.session isRunning]) {
         [self.session stopRunning];
     }
@@ -1449,9 +1478,16 @@ static NSUInteger flashlightModeCache = 0;
         [self.session addInput:self.videoInput];
         ZLLoggerDebug(@"无法添加新的摄像头输入");
     }
-    [self configureFlashlight];
     [self.session commitConfiguration];
-    [self.session startRunning];
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [self.session startRunning];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // startRunning 会重置设备配置，需要重新应用手电筒状态
+            [self configureFlashlight];
+            ZLLoggerDebug(@"[相机] 切换广角模式完成 | isWideAngle:%d | newDeviceHasTorch:%d | sessionRunning:%d",
+                          isWideAngle, self.videoInput.device.hasTorch, self.session.isRunning);
+        });
+    });
 }
 
 #pragma mark - AVCaptureFileOutputRecordingDelegate

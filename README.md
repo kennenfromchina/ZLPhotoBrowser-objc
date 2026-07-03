@@ -51,6 +51,7 @@
 ### 更新日志
 > [更多更新日志](https://github.com/longitachi/ZLPhotoBrowser-objc/blob/master/UPDATELOG.md)
 ```
+● 1.0.21: 相机拍照手电筒常亮模式，替代闪光灯;
 ● 1.0.20: 相机拍照预览页增加原图选择功能;
 ● 1.0.19: 修复设备旋转时持续调用聚焦导致拍照模糊的bug;
 ● 1.0.4: 修复无法导出iCloud视频的bug;
